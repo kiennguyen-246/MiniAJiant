@@ -1,0 +1,10 @@
+.vscode
+.vs
+.venv
+Temp
+x64
+node_modules
+__pycache__
+events
+events.log
+error.log
