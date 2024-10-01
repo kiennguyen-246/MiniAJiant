@@ -38,11 +38,12 @@ int wmain(int argc, LPWSTR argv[]) {
   FilterUser fuMfltUser(FILTER_NAME, FILTER_COM_PORT_NAME);
   std::future<HRESULT> fMainRoutine;
   bool bHasStarted = false;
+  bool bIsInstalledSuccessfully = false;
+  int iResult = 0;
 
   saLogFolder = {sizeof(SECURITY_ATTRIBUTES), NULL, TRUE};
   CreateDirectory(L".\\Logs", &saLogFolder);
 
-  //std::cout << std::format("{:08x}\n", -1);
 
   if (argc < 3) {
     wprintf(L"Usage: user [server host] [server port]\n");
@@ -59,10 +60,27 @@ int wmain(int argc, LPWSTR argv[]) {
     std::wstring wsCommand;
     std::wcin >> wsCommand;
     if (wsCommand == L"install") {
-      wprintf(L"Command currently disabled\n");
+      iResult = system(
+          "rundll32 syssetup,SetupInfObjectInstallAction DefaultInstall 128 "
+          ".\\Drivers\\MiniAJiant.inf");
+      if (iResult) {
+        wprintf(L"Installation failed 0x%08x\n", iResult);
+        logNotification(
+            std::format(L"Start failed 0x{:08x}", (unsigned)iResult),
+            NOTIFICATION_ERROR_TYPE);
+        continue;
+      }
+      wprintf(L"Successful\n");
+      logNotification(std::format(L"Installed successful"),
+                      NOTIFICATION_INFO_TYPE);
+      bIsInstalledSuccessfully = true;
     } else if (wsCommand == L"start") {
+      if (!bIsInstalledSuccessfully) {
+        wprintf(L"The filter driver has not been installed.\n");
+      }
+
       hr = fuMfltUser.loadFilter();
-      if (hr) {
+      if (FAILED(hr)) {
         wprintf(L"Start failed 0x%08x\n", hr);
         logNotification(std::format(L"Start failed 0x{:08x}", (unsigned)hr),
                         NOTIFICATION_ERROR_TYPE);
@@ -85,7 +103,7 @@ int wmain(int argc, LPWSTR argv[]) {
                       NOTIFICATION_INFO_TYPE);
     } else if (wsCommand == L"stop") {
       if (!bHasStarted) {
-        wprintf(L"The filter has not started\n");
+        wprintf(L"The filtering process has not started.\n");
         continue;
       }
       fuMfltUser.setShouldStop();
@@ -114,7 +132,7 @@ int wmain(int argc, LPWSTR argv[]) {
       logNotification(std::format(L"Stop successful"), NOTIFICATION_INFO_TYPE);
     } else if (wsCommand == L"quit") {
       if (bHasStarted) {
-        wprintf(L"Please stop the filter before exiting\n");
+        wprintf(L"Please stop the filtering process before exiting.\n");
         continue;
       }
       break;

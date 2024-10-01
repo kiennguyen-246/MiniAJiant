@@ -16,5 +16,7 @@
     <VerifyProjectOutput>True</VerifyProjectOutput>
     <VerifyDrivers />
     <VerifyFlags>133563</VerifyFlags>
+    <SignMode>TestSign</SignMode>
+    <TestCertificate>CN="WDKTestCert kiennd19,133722470051391385" | 97FF3C8720613D1E2D33298F0F04EB28013D0DD7</TestCertificate>
   </PropertyGroup>
 </Project>
