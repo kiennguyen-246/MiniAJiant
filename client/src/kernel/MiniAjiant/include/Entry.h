@@ -6,7 +6,7 @@
 #include "public.h"
 
 #define MFLT_COM_PORT_NAME L"\\MAJPort"
-#define DbgPrint(x, ...) DbgPrint("[MiniFilter]" x, __VA_ARGS__)
+#define DbgPrint(x, ...) DbgPrint("[MiniAJiant]" x, __VA_ARGS__)
 #define MAX_TIMEOUT 50000000
 
 typedef struct _MFLT_DATA {
