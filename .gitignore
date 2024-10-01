@@ -7,4 +7,4 @@ node_modules
 __pycache__
 events
 events.log
-error.log
+notification.log

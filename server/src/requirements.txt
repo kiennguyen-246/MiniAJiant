@@ -1,0 +1,2 @@
+websockets==13.0.1
+yara-python==4.5.1
