@@ -14,8 +14,10 @@ HRESULT ComPort::connectToKernelNode(std::wstring sPortName) {
   hr = FilterConnectCommunicationPort(sPortName.c_str(), 0, NULL, 0, NULL,
                                       &hComPort);
   if (FAILED(hr)) {
-    fwprintf(stderr, L"Connect to kernel mode failed 0x%08x\n", hr);
-    fflush(stderr);
+    logNotification(
+        std::format(L"FilterConnectCommunicationPort() failed 0x{:08x}",
+                    (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   }
   return hr;
@@ -29,8 +31,9 @@ HRESULT ComPort::getRecord(PMFLT_EVENT_RECORD pEventRecord) {
       hComPort, &msg.header,
       sizeof(MFLT_EVENT_RECORD) + sizeof(FILTER_MESSAGE_HEADER), NULL);
   if (FAILED(hr)) {
-    fwprintf(stderr, L"Get message failed 0x%08x\n", hr);
-    fflush(stderr);
+    logNotification(
+        std::format(L"FilterGetMessage() failed 0x{:08x}", (unsigned)hr),
+                    NOTIFICATION_ERROR_TYPE);
     return hr;
   }
 

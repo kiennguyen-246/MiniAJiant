@@ -9,7 +9,9 @@ ClientSocket::ClientSocket() {
   iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
   if (iResult) {
     hrSocketInitResult = HRESULT_FROM_WIN32(iResult);
-    fwprintf(stderr, L"WSAStartup failed: 0x%08x\n", hrSocketInitResult);
+    logNotification(std::format(L"WSAStartup failed 0x{:08x}",
+                                (unsigned)hrSocketInitResult),
+        NOTIFICATION_ERROR_TYPE);
   }
 
   connectSocket = INVALID_SOCKET;
@@ -35,7 +37,9 @@ HRESULT ClientSocket::connectToHost(std::wstring wsHost, std::wstring wsPort) {
 
   iResult = GetAddrInfo(wsHost.c_str(), wsPort.c_str(), &hints, &pResult);
   if (iResult) {
-    fwprintf(stderr, L"GetAddrInfo failed: 0x%08x\n", HRESULT_FROM_WIN32(iResult));
+    logNotification(std::format(L"GetAddrInfo failed: 0x{:08x}",
+                                (unsigned)HRESULT_FROM_WIN32(iResult)),
+                    NOTIFICATION_ERROR_TYPE);
     return E_FAIL;
   }
 
@@ -44,7 +48,9 @@ HRESULT ClientSocket::connectToHost(std::wstring wsHost, std::wstring wsPort) {
 
   if (connectSocket == INVALID_SOCKET) {
     HRESULT hrLastError = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Error at socket(): 0x%08x\n", hrLastError);
+    logNotification(std::format(L"winsock2 socket() failed 0x{:08x}",
+                                (unsigned)hrLastError),
+        NOTIFICATION_ERROR_TYPE);
     FreeAddrInfo(pResult);
     return hrLastError;
   }
@@ -53,7 +59,9 @@ HRESULT ClientSocket::connectToHost(std::wstring wsHost, std::wstring wsPort) {
 
   if (iResult) {
     HRESULT hrLastError = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Connect to server failed: 0x%08x\n", hrLastError);
+    logNotification(std::format(L"winsock2 connect() failed 0x{:08x}",
+                                (unsigned)hrLastError),
+        NOTIFICATION_ERROR_TYPE);
     FreeAddrInfo(pResult);
     return hrLastError;
   }
@@ -66,7 +74,9 @@ HRESULT ClientSocket::disconnectFromCurrentHost() {
   iResult = shutdown(connectSocket, SD_SEND);
   if (iResult) {
     HRESULT hrLastError = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Connection shutdown failed 0x%08x\n", hrLastError);
+    logNotification(std::format(L"winsock2 shutdown() failed 0x{:08x}",
+                                (unsigned)hrLastError),
+        NOTIFICATION_ERROR_TYPE);
     return hrLastError;
   }
   return S_OK;
@@ -78,10 +88,13 @@ HRESULT ClientSocket::sendMsg(std::wstring* pwsMsg) {
                  (int)pwsMsg->length() * sizeof(WCHAR), 0);
   if (iResult == SOCKET_ERROR) {
     HRESULT hrLastError = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Send message failed 0x%08x\n", hrLastError);
+    logNotification(
+        std::format(L"winsock2 send() failed 0x{:08x}", (unsigned)hrLastError),
+        NOTIFICATION_ERROR_TYPE);
     return hrLastError;
   } else {
-    // fwprintf(stderr, L"Message sent: %ws", pwsMsg->c_str());
+    logNotification(std::format(L"Message sent {}", *pwsMsg),
+                    NOTIFICATION_DEBUG_TYPE);
   }
   return S_OK;
 }
@@ -95,11 +108,15 @@ HRESULT ClientSocket::receiveMsg(std::wstring* pwsMsg) {
   iResult = recv(connectSocket, cBuffer, 1024, 0);
   if (iResult == 0) {
     hr = E_FAIL;
-    fwprintf(stderr, L"Receiving failed due to connection closed\n");
+    logNotification(
+        std::format(L"winsock2 recv() failed due to connection closed"),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   } else if (iResult < 0) {
     hr = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Receive HTTP response failed 0x%08x", hr);
+    logNotification(
+        std::format(L"winsock2 recv() failed 0x{:08x}", (unsigned)hr),
+                    NOTIFICATION_ERROR_TYPE);
     return hr;
   }
   *pwsMsg = (LPWSTR)cBuffer;
@@ -111,10 +128,12 @@ HRESULT ClientSocket::sendData(LPSTR pcBuffer, PULONG puiBufferLengthSend) {
   iResult = send(connectSocket, pcBuffer, *puiBufferLengthSend, 0);
   if (iResult == SOCKET_ERROR) {
     HRESULT hrLastError = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Send message failed 0x%08x\n", hrLastError);
+    logNotification(
+        std::format(L"winsock2 send() failed 0x{:08x}", (unsigned)hrLastError),
+        NOTIFICATION_ERROR_TYPE);
     return hrLastError;
   } else {
-    // fwprintf(stderr, L"Message sent: %ws", pwsMsg->c_str());
+      // do nothing
   }
   return S_OK;
 }
@@ -127,11 +146,15 @@ HRESULT ClientSocket::receiveData(LPSTR pcBuffer, PULONG puiBufferMaximumLength,
   iResult = recv(connectSocket, pcBuffer, *puiBufferMaximumLength, 0);
   if (iResult == 0) {
     hr = E_FAIL;
-    fwprintf(stderr, L"Receiving failed due to connection closed\n");
+    logNotification(
+        std::format(L"winsock2 recv() failed due to connection closed"),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   } else if (iResult < 0) {
     hr = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Receive HTTP response failed 0x%08x", hr);
+    logNotification(
+        std::format(L"winsock2 recv() failed 0x{:08x}", (unsigned)hr),
+                    NOTIFICATION_ERROR_TYPE);
     return hr;
   }
   *puiBufferLengthReceived = iResult;

@@ -5,6 +5,7 @@
 #include <ws2tcpip.h>
 
 #include <iostream>
+#include <utils/helpers.hpp>
 
 class ClientSocket {
  public:

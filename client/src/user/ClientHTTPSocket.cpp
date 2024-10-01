@@ -76,10 +76,12 @@ HRESULT ClientHTTPSocket::sendGETRequest() {
   int iResult = send(connectSocket, pcMsg, (int)strlen(pcMsg), 0);
   if (iResult == SOCKET_ERROR) {
     hr = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Send HTTP request failed 0x%08x\n", hr);
+    logNotification(std::format(L"winsock2 send() failed 0x{:08x}", (unsigned)hr),
+                    NOTIFICATION_ERROR_TYPE);
     return hr;
   } else {
-    fwprintf(stderr, L"HTTP request sent.\n");
+    //logNotification(std::format(L"{}", pcMsg),
+    //                NOTIFICATION_INFO_TYPE);
   }
   return hr;
 }
@@ -90,11 +92,15 @@ HRESULT ClientHTTPSocket::receiveResponse() {
   int iResult = recv(connectSocket, pcBuffer, CHS_MAX_MESSAGE_SIZE, 0);
   if (iResult == 0) {
     hr = E_FAIL;
-    fwprintf(stderr, L"Connection closed\n");
+    logNotification(
+        std::format(L"winsock2 recv() failed due to connection closed"),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   } else if (iResult < 0) {
     hr = HRESULT_FROM_WIN32(WSAGetLastError());
-    fwprintf(stderr, L"Receive HTTP response failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"winsock2 recv() failed 0x{:08x}", (unsigned)hr),
+                    NOTIFICATION_ERROR_TYPE);
     return hr;
   }
 

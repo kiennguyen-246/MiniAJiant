@@ -35,32 +35,36 @@ HRESULT FilterUser::loadFilter() {
   if (!OpenProcessToken(GetCurrentProcess(),
                         TOKEN_QUERY | TOKEN_ADJUST_PRIVILEGES, &hToken)) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"Get access token failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"OpenProcessToken() failed 0x{:08x}", (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   }
   setPrivilege(hToken, SE_LOAD_DRIVER_NAME, TRUE);
 
   hr = FilterLoad(wsFilterName.c_str());
   if (FAILED(hr)) {
-    if (hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) {
-      //fwprintf(stderr,
-      //         L"Driver already loaded and will no longer need loading.\n");
+    if (hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS) ||
+        hr == HRESULT_FROM_WIN32(ERROR_SERVICE_ALREADY_RUNNING)) {
+      logNotification(std::format(L"Driver has already been loaded"),
+                      NOTIFICATION_WARNING_TYPE);
     } else {
-      fwprintf(stderr, L"Load filter failed 0x%08x\n", hr);
+      logNotification(
+          std::format(L"LoadFilter() failed 0x{:08x}", (unsigned)hr),
+          NOTIFICATION_ERROR_TYPE);
       return hr;
     }
   }
   bIsFilterLoaded = 1;
-  fwprintf(stderr, L"Filter loaded\n");
+  logNotification(std::format(L"Driver successfully loaded"),
+                  NOTIFICATION_INFO_TYPE);
   fflush(stdout);
 
   hr = cp.connectToKernelNode(wsComPortName.c_str());
   if (FAILED(hr)) {
-    fwprintf(stderr, L"Connection to kernel mode failed 0x%08x\n", hr);
     return hr;
   }
   bIsComPortConnected = 1;
-  //fwprintf(stderr, L"Connection to kernel mode established\n");
   fflush(stdout);
 
   return hr;
@@ -71,7 +75,6 @@ HRESULT FilterUser::connectToServer(std::wstring wsHost, std::wstring wsPort) {
 
   hr = wsc.init();
   if (FAILED(hr)) {
-    fwprintf(stderr, L"WebSocket initialization failed 0x%08x", hr);
     return hr;
   }
 
@@ -102,16 +105,24 @@ HRESULT FilterUser::unloadFilter() {
 
   hr = FilterUnload(wsFilterName.c_str());
   if (FAILED(hr)) {
-    fwprintf(stderr, L"FilterUnload failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"FilterUnload() failed 0x{:08x}", (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   }
   bIsFilterLoaded = 0;
+  logNotification(std::format(L"Driver successfully unloaded."),
+                  NOTIFICATION_INFO_TYPE);
   return hr;
 }
 
 HRESULT FilterUser::doMainRoutine() {
   HRESULT hr = S_OK;
   MFLT_EVENT_RECORD eventRecord;
+
+  logNotification(
+      std::format(L"Filtering and message sending routine has started."),
+      NOTIFICATION_INFO_TYPE);
   while (1) {
     if (bShouldStop) {
       break;
@@ -127,8 +138,7 @@ HRESULT FilterUser::doMainRoutine() {
     std::wstring wsMsg;
     hr = composeEventLog(&eventRecord, &wsMsg);
 
-     //fwprintf(stderr, L"%ws\n", wsMsg.c_str());
-     //fflush(stdout);
+    logNotification(std::format(L"{}", wsMsg), NOTIFICATION_DEBUG_TYPE);
 
     wfsLog << wsMsg << L"\n";
     wfsLog.flush();
@@ -139,6 +149,9 @@ HRESULT FilterUser::doMainRoutine() {
   }
 
   bShouldStop = false;
+  logNotification(
+      std::format(L"Filtering and message sending routine has stopped."),
+      NOTIFICATION_INFO_TYPE);
 
   return hr;
 }
@@ -146,6 +159,10 @@ HRESULT FilterUser::doMainRoutine() {
 HRESULT FilterUser::setShouldStop() {
   bShouldStop = true;
   wsc.setShouldStop();
+  logNotification(
+      std::format(
+          L"User mode filter thread received a stop request from the manager."),
+      NOTIFICATION_INFO_TYPE);
   return S_OK;
 }
 
@@ -157,7 +174,9 @@ HRESULT FilterUser::setPrivilege(HANDLE hToken, LPCWSTR pwcPrivilege,
 
   if (!LookupPrivilegeValue(NULL, pwcPrivilege, &luid)) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"LoogupPrivilegeValue error 0x%08x\n", hr);
+    logNotification(
+        std::format(L"LookupPrivilegeValue() failed 0x{:08x}", (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   };
 
@@ -172,11 +191,16 @@ HRESULT FilterUser::setPrivilege(HANDLE hToken, LPCWSTR pwcPrivilege,
   if (!AdjustTokenPrivileges(hToken, FALSE, &tp, sizeof(TOKEN_PRIVILEGES),
                              (PTOKEN_PRIVILEGES)NULL, (PDWORD)NULL)) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"AdjustTokenPrivileges error 0x%08x\n", hr);
+    logNotification(
+        std::format(L"AdjustTokenPrivileges() failed 0x{:08x}", (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   };
   if (GetLastError() == ERROR_NOT_ALL_ASSIGNED) {
-    std::wcout << L"The token does not have the specified privilege. \n";
+    logNotification(
+        std::format(L"AdjustTokenPrivileges() failed: The token does "
+                    L"not have the specified privilege."),
+        NOTIFICATION_ERROR_TYPE);
     return HRESULT_FROM_WIN32(ERROR_NOT_ALL_ASSIGNED);
   }
 
@@ -199,7 +223,9 @@ HRESULT FilterUser::composeEventLog(PMFLT_EVENT_RECORD pEventRecord,
   ZeroMemory(pwcComputerName, sizeof(pwcComputerName));
   hr = GetComputerName(pwcComputerName, &uiComputerNameLength);
   if (FAILED(hr)) {
-    fwprintf(stderr, L"GetComputerName failed 0x%08x", hr);
+    logNotification(
+        std::format(L"GetComputerName() failed 0x{:08x}", (unsigned)hr),
+        NOTIFICATION_WARNING_TYPE);
     // return hr;
   }
   jsObj.addSingleObj(L"computerName", pwcComputerName);
@@ -269,12 +295,13 @@ HRESULT FilterUser::logCreateProcessEvent(PMFLT_EVENT_RECORD pEventRecord,
                                   OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (hImageFileHandle == INVALID_HANDLE_VALUE) {
       hr = HRESULT_FROM_WIN32(GetLastError());
-      fwprintf(stderr, L"Cannot open file %ws, error 0x%08x\n",
-               pEventRecord->objInfo.procInfo.pwcImageName, hr);
+      logNotification(
+          std::format(L"CreateFile() failed 0x{:08x} at file {}", (unsigned)hr,
+                      pEventRecord->objInfo.procInfo.pwcImageName),
+          NOTIFICATION_WARNING_TYPE);
     }
     uiImageFileAbsolutePathBufferSize = GetFinalPathNameByHandle(
         hImageFileHandle, pwcImageFileAbsolutePath, MAX_PATH, VOLUME_NAME_DOS);
-    // fwprintf(stderr, L"%ws\n", pwcImageFileAbsolutePath);
     CloseHandle(hImageFileHandle);
 
     /// Get image file attributes
@@ -294,21 +321,19 @@ HRESULT FilterUser::logCreateProcessEvent(PMFLT_EVENT_RECORD pEventRecord,
                       stImageFileCreateTime.wMinute,
                       stImageFileCreateTime.wSecond));
 
-      // llImageFileSize = (LONGLONG)imageFileAttributeData.nFileSizeHigh
-      //                   << 32 + imageFileAttributeData.nFileSizeLow;
-      // pJsObj->addSingleObj(L"imageFileSize",
-      //                    std::format(L"{}", llImageFileSize));
     } else {
       hr = HRESULT_FROM_WIN32(GetLastError());
-      fwprintf(stderr, L"GetFileAttributesEx failed 0x%08x\n", hr);
+      logNotification(
+          std::format(L"GetFileAttributeEx() failed 0x{:08x} at file {}",
+                      (unsigned)hr,
+                      pEventRecord->objInfo.procInfo.pwcImageName),
+          NOTIFICATION_WARNING_TYPE);
     }
 
     /// Get file version info
     uiFileVersionInfoBlockSize =
         GetFileVersionInfoSize(pwcImageFileAbsolutePath, NULL);
     if (uiFileVersionInfoBlockSize != 0) {
-      // fwprintf(stderr, L"Retrieve successful for %ws\n",
-      //         pEventRecord->objInfo.procInfo.pwcImageName);
       lpFileVersionInfoBlock = malloc(uiFileVersionInfoBlockSize);
       if (GetFileVersionInfo(pwcImageFileAbsolutePath, 0,
                              uiFileVersionInfoBlockSize,
@@ -332,13 +357,13 @@ HRESULT FilterUser::logCreateProcessEvent(PMFLT_EVENT_RECORD pEventRecord,
             L"imageFileOriginalName",
             getFileVersionInfoEntry(lpFileVersionInfoBlock, lpLangCodePage,
                                     uiLangCodePageSize, L"OriginalFilename"));
-        // pJsObj->addSingleObj(
-        //     L"imageFileProductName",
-        //     getFileVersionInfoEntry(lpFileVersionInfoBlock, lpLangCodePage,
-        //                             uiLangCodePageSize, L"ProductName"));
       } else {
         hr = HRESULT_FROM_WIN32(GetLastError());
-        fwprintf(stderr, L"GetFileVersionInfo failed 0x%08x\n", hr);
+        logNotification(
+            std::format(L"GetFileVersionInfo() failed 0x{:08x} at file {}",
+                        (unsigned)hr,
+                        pEventRecord->objInfo.procInfo.pwcImageName),
+            NOTIFICATION_WARNING_TYPE);
       }
       free(lpFileVersionInfoBlock);
     } else {
@@ -349,8 +374,11 @@ HRESULT FilterUser::logCreateProcessEvent(PMFLT_EVENT_RECORD pEventRecord,
         pJsObj->addSingleObj(L"imageFileDescription", L"Unknown");
         pJsObj->addSingleObj(L"imageFileOriginalName", L"Unknown");
       } else {
-        fwprintf(stderr, L"GetFileVersionInfoSize failed 0x%08x at file %ws\n",
-                 hr, pEventRecord->objInfo.procInfo.pwcImageName);
+        logNotification(
+            std::format(L"GetFileVersionInfoSize() failed 0x{:08x} at file {}",
+                        (unsigned)hr,
+                        pEventRecord->objInfo.procInfo.pwcImageName),
+            NOTIFICATION_WARNING_TYPE);
       }
     }
 
@@ -431,13 +459,18 @@ std::wstring FilterUser::getFileHash(std::wstring wsFileName, ALG_ID hashAlg) {
   if (!CryptAcquireContext(&hProv, NULL, NULL, uiCryptoProvider,
                            CRYPT_VERIFYCONTEXT)) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"CryptAcquireContext failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"CryptAcquireContext() failed 0x{:08x} at file {}",
+                    (unsigned)hr, wsFileName),
+        NOTIFICATION_WARNING_TYPE);
     return L"";
   }
 
   if (!CryptCreateHash(hProv, hashAlg, 0, 0, &hHash)) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"CryptCreateHash failed 0x%08x\n", hr);
+    logNotification(std::format(L"CryptCreateHash() failed 0x{:08x} at file {}",
+                                (unsigned)hr, wsFileName),
+                    NOTIFICATION_WARNING_TYPE);
     CryptReleaseContext(hProv, 0);
     return L"";
   }
@@ -447,8 +480,12 @@ std::wstring FilterUser::getFileHash(std::wstring wsFileName, ALG_ID hashAlg) {
                  OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
   if (hFileHandle == INVALID_HANDLE_VALUE) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"Cannot open file %ws, error 0x%08x\n",
-             wsFileName.c_str(), hr);
+    logNotification(std::format(L"CreateFile() failed 0x{:08x} at file {}",
+                                (unsigned)hr, wsFileName),
+                    NOTIFICATION_WARNING_TYPE);
+    CryptReleaseContext(hProv, 0);
+    CryptDestroyHash(hHash);
+    return L"";
   }
 
   while (bResult = ReadFile(hFileHandle, pucFileContentBuffer, MAX_BUFFER_SIZE,
@@ -459,8 +496,9 @@ std::wstring FilterUser::getFileHash(std::wstring wsFileName, ALG_ID hashAlg) {
 
     if (!CryptHashData(hHash, pucFileContentBuffer, uiBytesRead, 0)) {
       hr = HRESULT_FROM_WIN32(GetLastError());
-      fwprintf(stderr, L"CryptHashData failed 0x%08x at file %ws\n", hr,
-               wsFileName.c_str());
+      logNotification(std::format(L"CryptHashData() failed 0x{:08x} at file {}",
+                                  (unsigned)hr, wsFileName),
+                      NOTIFICATION_WARNING_TYPE);
       CryptReleaseContext(hProv, 0);
       CryptDestroyHash(hHash);
       return L"";
@@ -469,8 +507,9 @@ std::wstring FilterUser::getFileHash(std::wstring wsFileName, ALG_ID hashAlg) {
 
   if (!bResult) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"ReadFile failed 0x%08x at file %ws\n", hr,
-             wsFileName.c_str());
+    logNotification(std::format(L"ReadFile() failed 0x{:08x} at file {}",
+                                (unsigned)hr, wsFileName),
+                    NOTIFICATION_WARNING_TYPE);
     CryptReleaseContext(hProv, 0);
     CryptDestroyHash(hHash);
     return L"";
@@ -479,8 +518,10 @@ std::wstring FilterUser::getFileHash(std::wstring wsFileName, ALG_ID hashAlg) {
   uiBytesHashed = uiHashLength;
   if (!CryptGetHashParam(hHash, HP_HASHVAL, pucHash, &uiBytesHashed, 0)) {
     hr = HRESULT_FROM_WIN32(GetLastError());
-    fwprintf(stderr, L"CryptGetHashParam failed 0x%08x at file %ws\n", hr,
-             wsFileName.c_str());
+    logNotification(
+        std::format(L"CryptGetHashParam() failed 0x{:08x} at file {}",
+                    (unsigned)hr, wsFileName),
+        NOTIFICATION_WARNING_TYPE);
     CryptReleaseContext(hProv, 0);
     CryptDestroyHash(hHash);
     return L"";

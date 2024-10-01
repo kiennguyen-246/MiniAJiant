@@ -29,13 +29,15 @@ HRESULT WebSocketClient::init() {
   pChs = new ClientHTTPSocket();
   hr = pChs->getSocketInitResult();
   if (FAILED(hr)) {
-    fwprintf(stderr, L"WinSock initialization failed 0x%08x\n", hr);
     return hr;
   }
 
   hr = WebSocketCreateClientHandle(NULL, 0, &wshTempClient);
   if (FAILED(hr)) {
-    fwprintf(stderr, L"Websocket initialization failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"WebSocketCreateClientHandle() failed 0x{:08x}",
+                    (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     if (wshTempClient != NULL) {
       WebSocketDeleteHandle(wshTempClient);
       wshTempClient = NULL;
@@ -69,7 +71,10 @@ HRESULT WebSocketClient::handshake(std::wstring wsHost, std::wstring wsPort) {
                                      &pClientAdditionalHeaders,
                                      &uiClientAdditionalHeadersCount);
   if (FAILED(hr)) {
-    fwprintf(stderr, L"WebSocketBeginClientHandshake failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"WebSocketBeginClientHandshake() failed 0x{:08x}",
+                    (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   }
 
@@ -91,8 +96,9 @@ HRESULT WebSocketClient::handshake(std::wstring wsHost, std::wstring wsPort) {
 
   int iHTTPStatus = pChs->getResponseHTTPStatus();
   if (iHTTPStatus != 101) {
-    fwprintf(stderr, L"Handshake to the server failed with HTTP status %d\n",
-             iHTTPStatus);
+    logNotification(
+        std::format(L"Handshaking failed with HTTP status {}", iHTTPStatus),
+        NOTIFICATION_ERROR_TYPE);
     return E_FAIL;
   }
 
@@ -119,11 +125,16 @@ HRESULT WebSocketClient::handshake(std::wstring wsHost, std::wstring wsPort) {
                                    uiServerAdditionalHeadersCount, NULL, 0,
                                    NULL);
   if (FAILED(hr)) {
-    fwprintf(stderr, L"WebSocketEndClientHandshake failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"WebSocketEndClientHandshake() failed 0x{:08x}",
+                    (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     return hr;
   }
 
   bIsHandshakeSuccessful = 1;
+  logNotification(std::format(L"Established WebSocket connection."),
+                  NOTIFICATION_INFO_TYPE);
   return hr;
 }
 
@@ -138,6 +149,9 @@ HRESULT WebSocketClient::queueMsg(std::wstring wsMsg) {
 bool WebSocketClient::isHandshakeSuccessful() { return bIsHandshakeSuccessful; }
 
 HRESULT WebSocketClient::setShouldStop() {
+  logNotification(
+      std::format(L"WebSocket received a stop request from the manager."),
+      NOTIFICATION_INFO_TYPE);
   bShouldStop = true;
   return S_OK;
 }
@@ -160,7 +174,9 @@ HRESULT WebSocketClient::runGetActionLoop() {
                             &uiBufferCount, &action, &bufferType, NULL,
                             &actionContext);
     if (FAILED(hr)) {
-      fwprintf(stderr, L"WebSocketGetAction failed 0x%08x\n", hr);
+      logNotification(
+          std::format(L"WebSocketGetAction() failed 0x{:08x}", (unsigned)hr),
+                      NOTIFICATION_ERROR_TYPE);
       WebSocketAbortHandle(wshClient);
     }
 
@@ -228,6 +244,9 @@ HRESULT WebSocketClient::cleanup() {
     return hr;
   }
   bIsHandshakeSuccessful = 0;
+  logNotification(
+      std::format(L"WebSocket connection successfully closeed."),
+      NOTIFICATION_INFO_TYPE);
   return S_OK;
 }
 
@@ -235,6 +254,10 @@ HRESULT WebSocketClient::send() {
   HRESULT hr = S_OK;
   std::wstring wsMsg;
   WEB_SOCKET_BUFFER wsbSendBuffer;
+
+  logNotification(
+      std::format(L"WebSocket message sending thread has started."),
+      NOTIFICATION_INFO_TYPE);
 
   while (!bShouldStop) {
     if (qwsMsgQueue.empty()) {
@@ -251,7 +274,9 @@ HRESULT WebSocketClient::send() {
     hr = WebSocketSend(wshClient, WEB_SOCKET_UTF8_MESSAGE_BUFFER_TYPE,
                        &wsbSendBuffer, NULL);
     if (FAILED(hr)) {
-      fwprintf(stderr, L"WebSocketSend failed 0x%08x\n", hr);
+      logNotification(
+          std::format(L"WebSocketSend() failed 0x{:08x}", (unsigned)hr),
+                      NOTIFICATION_ERROR_TYPE);
       return hr;
     }
 
@@ -269,7 +294,9 @@ HRESULT WebSocketClient::send() {
     // runGetActionLoop()
     hr = WebSocketReceive(wshClient, NULL, NULL);
     if (FAILED(hr)) {
-      fwprintf(stderr, L"WebSocketReceive failed 0x%08x\n", hr);
+      logNotification(
+          std::format(L"WebSocketReceive() failed 0x{:08x}", (unsigned)hr),
+                      NOTIFICATION_ERROR_TYPE);
       return hr;
     }
 
@@ -284,6 +311,9 @@ HRESULT WebSocketClient::send() {
 
     qwsMsgQueue.pop();
   }
+  logNotification(
+      std::format(L"WebSocket message sending thread has stopped."),
+      NOTIFICATION_INFO_TYPE);
   return hr;
 }
 
@@ -291,13 +321,13 @@ HRESULT WebSocketClient::reconnect() {
   HRESULT hr = S_OK;
   WEB_SOCKET_HANDLE wshTempClient;
 
-  fwprintf(stderr, L"Attempting to reconnect\n");
+  logNotification(std::format(L"Attempting to reconnect to the server"),
+                  NOTIFICATION_INFO_TYPE);
 
   delete pChs;
   pChs = new ClientHTTPSocket();
   hr = pChs->getSocketInitResult();
   if (FAILED(hr)) {
-    fwprintf(stderr, L"WinSock initialization failed 0x%08x\n", hr);
     return hr;
   }
 
@@ -306,7 +336,10 @@ HRESULT WebSocketClient::reconnect() {
 
   hr = WebSocketCreateClientHandle(NULL, 0, &wshTempClient);
   if (FAILED(hr)) {
-    fwprintf(stderr, L"Websocket initialization failed 0x%08x\n", hr);
+    logNotification(
+        std::format(L"WebSocketCreateClientHandle() failed 0x{:08x}",
+                    (unsigned)hr),
+        NOTIFICATION_ERROR_TYPE);
     if (wshTempClient != NULL) {
       WebSocketDeleteHandle(wshTempClient);
       wshTempClient = NULL;
