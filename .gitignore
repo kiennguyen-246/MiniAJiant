@@ -8,3 +8,6 @@ __pycache__
 events
 events.log
 notification.log
+build
+dist
+*.spec
