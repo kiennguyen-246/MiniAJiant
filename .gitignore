@@ -11,3 +11,4 @@ notification.log
 build
 dist
 *.spec
+warnings

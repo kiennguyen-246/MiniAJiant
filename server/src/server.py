@@ -16,21 +16,36 @@ def wstr_to_str(buffer):
     return ''.join(chr(char) for char in chars)
 
 rules = []
+if not os.path.exists("./rules"):
+    os.makedirs("./rules")
 for yar_file in os.listdir("./rules"):
     rules.append(yara.compile("./rules/" + yar_file))
+    
+warnings_folder = "./warnings"
+if not os.path.exists(warnings_folder):
+    os.makedirs(warnings_folder)
+    
+log_folder = "./events"
+if not os.path.exists(log_folder):
+    os.makedirs(log_folder)
 
 def yara_detect(file_path):
+    matches = []
     for rule in rules:
-        matches = rule.match(file_path)
+        match = rule.match(file_path)
+        if match:
+            matches.append(match)
     return matches
 
 async def handler(websocket):
-    print("Connected to client at {}:{}".format(websocket.remote_address[0], websocket.remote_address[1]))
+    print("\033[95mServer> \033[0m\033[92mConnected to client at {}:{}\033[0m".format(
+        websocket.remote_address[0], websocket.remote_address[1]))
     try:
         async for event in websocket:
             # print(event)
             event_json = json.loads(wstr_to_str(bytes(event, encoding='utf8')))
-            print("{}:{}> {}".format(websocket.remote_address[0], websocket.remote_address[1], event_json))
+            print("\033[96m{}:{}> \033[0m{}".format(
+                websocket.remote_address[0], websocket.remote_address[1], json.dumps(event_json, indent=4)))
 
             log_folder = "./events"
             if not os.path.exists(log_folder):
@@ -40,24 +55,33 @@ async def handler(websocket):
                 os.makedirs(current_pc_log_folder)
             current_event_log_file_path = current_pc_log_folder + "/event" + event_json["eventId"] + ".json"
             with open(current_event_log_file_path, "w") as f:
-                f.write(json.dumps(event_json))
+                f.write(json.dumps(event_json, indent=4))
                 
             yara_matches = yara_detect(current_event_log_file_path)
-            if yara_matches:
-                print("Server> File {} at client {}:{} (computer {}) may contains {}".format(
+            if len(yara_matches):
+                for rule_matches in yara_matches:
+                    event_json["warnings"] = [match.rule for match in rule_matches]
+                
+                print("\033[95mServer> \033[0m\033[93mFile {} at client {}:{} (computer {}) matches \033[0m\033[91m{}\033[0m".format(
                     event_json["imageFileDir"],
                     websocket.remote_address[0],
                     websocket.remote_address[1],
                     event_json["computerName"],
-                    yara_matches))
+                    event_json["warnings"]))
+                
+                current_event_warning_file_path = warnings_folder + "/" + event_json["eventId"] + ".json"
+                with open(current_event_warning_file_path, "w") as f:
+                    f.write(json.dumps(event_json, indent=4))
             
             await websocket.send(event_json["eventId"])
     except websockets.exceptions.ConnectionClosedError:
-        print("Client at {}:{} disconnected".format(websocket.remote_address[0], websocket.remote_address[1]))
+        print("\033[95mServer> \033[0m\033[92mClient at {}:{} disconnected\033[0m".format(
+            websocket.remote_address[0], websocket.remote_address[1]))
 
 async def main():
     async with websockets.asyncio.server.serve(handler, host, port, ping_interval=None):
-        print("Server is on at {}:{}".format(host, port))
+        print("\033[95mServer> \033[0m\033[92mServer is on at {}:{}\033[0m".format(
+            host, port))
         await asyncio.get_running_loop().create_future()
 
 asyncio.run(main())
